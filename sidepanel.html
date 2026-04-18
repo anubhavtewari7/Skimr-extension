@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div id="main-container">
+
+    <!-- COLLAPSIBLE CONTENT (hides on pulse) -->
+    <div class="collapsible">
+
+      <!-- HEADER -->
+      <header class="header">
+        <div class="logo">Skimr</div>
+        <button id="rescan-btn" class="rescan-btn hidden" title="Scan New Page">⟳ NEW SCAN</button>
+        <div class="tabs">
+          <button class="tab-btn active" data-view="hud">HUD</button>
+          <button class="tab-btn" data-view="vault">VAULT</button>
+        </div>
+      </header>
+
+      <!-- HUD PANEL -->
+      <main id="hud-panel" class="panel">
+        <section id="scan-view" class="view">
+          <div class="center-splash">
+            <div class="splash-icon">⬡</div>
+            <h1 class="title-vivid">READY FOR LINK</h1>
+            <p class="splash-sub">Open any academic document and ignite the scanner.</p>
+            <button id="ignite-btn" class="scan-btn">⚡ INITIALIZE</button>
+          </div>
+        </section>
+        <section id="result-view" class="view hidden">
+          <div class="card">
+            <div class="card-label">IDENTITY</div>
+            <div id="res-title" class="title-vivid">Analyzing...</div>
+            <div id="res-authors" class="sub-text">Scanning neural stream</div>
+          </div>
+          <div class="card">
+            <div class="card-label">CLIFF NOTES</div>
+            <div id="res-summary"></div>
+          </div>
+          <div class="card">
+            <div class="card-label">FLASHCARDS <span class="hint">(tap to reveal)</span></div>
+            <div id="res-flashcards"></div>
+            
+            <div class="custom-flashcard-box">
+              <input type="text" id="custom-fc-input" placeholder="Ask a custom question..." />
+              <button id="custom-fc-btn" class="scan-btn small-btn">Ask AI ✨</button>
+            </div>
+          </div>
+          <button id="save-vault-btn" class="save-btn hidden">⊕ SAVE TO VAULT</button>
+        </section>
+      </main>
+
+      <!-- VAULT PANEL -->
+      <main id="vault-panel" class="panel hidden">
+        <div id="vault-empty" class="center-splash">
+          <div class="splash-icon">📂</div>
+          <p class="splash-sub">Your Vault is empty.<br>Scan a page and save it to build your library.</p>
+        </div>
+        <div id="vault-notebook" class="hidden">
+          <div id="vault-tabs-col"></div>
+          <div id="vault-content-col">
+            <div id="vault-detail"></div>
+          </div>
+        </div>
+      </main>
+
+    </div><!-- end .collapsible -->
+
+    <!-- FOOTER: ALWAYS VISIBLE -->
+    <footer class="footer">
+      <div id="pulse-orb" class="pulse-orb" title="Focus Mode: hide/show HUD"></div>
+    </footer>
+  </div>
+
+  <script src="sidepanel.js" type="module"></script>
+</body>
+</html>
