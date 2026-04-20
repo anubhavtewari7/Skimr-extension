@@ -111,22 +111,19 @@ igniteBtn.addEventListener('click', async () => {
         target: { tabId: tab.id },
         func: async () => {
           try {
-            let playerResponse = window.ytInitialPlayerResponse;
-            if (!playerResponse) {
-              const scripts = Array.from(document.getElementsByTagName('script'));
-              const script = scripts.find(s => s.innerText.includes('ytInitialPlayerResponse'));
-              if (script) {
-                const match = script.innerText.match(/ytInitialPlayerResponse\s*=\s*(\{.*?\});/);
-                if (match) playerResponse = JSON.parse(match[1]);
-              }
-            }
-            if (!playerResponse) return null;
-
-            const captionTracks = playerResponse.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-            if (!captionTracks || captionTracks.length === 0) return null;
-
-            const res = await fetch(captionTracks[0].baseUrl);
-            const xmlText = await res.text();
+            // Fetch raw HTML to bypass YouTube's SPA state
+            const res = await fetch(window.location.href);
+            const htmlText = await res.text();
+            
+            // Find the hidden caption URL
+            const urlMatch = htmlText.match(/"baseUrl":"(https:[^"]+?timedtext[^"]+)"/);
+            if (!urlMatch) return null;
+            
+            // Unescape JSON string artifacts
+            const captionUrl = urlMatch[1].replace(/\\\//g, '/').replace(/\\u0026/g, '&');
+            
+            const xmlRes = await fetch(captionUrl);
+            const xmlText = await xmlRes.text();
             
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(xmlText, "text/xml");
@@ -141,7 +138,7 @@ igniteBtn.addEventListener('click', async () => {
         }
       });
       pageText = injection[0]?.result;
-      if (!pageText) throw new Error("Could not extract YouTube transcript. Make sure the video has captions available.");
+      if (!pageText) throw new Error("Could not extract YouTube transcript. Make sure the video has closed captions (CC) available.");
     } else {
       const injection = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
