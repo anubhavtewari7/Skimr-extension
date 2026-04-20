@@ -106,39 +106,51 @@ igniteBtn.addEventListener('click', async () => {
     let pageText = '';
 
     if (tab.url.includes('youtube.com/watch')) {
-      updateStatus('PROCESSING...', 'Extracting hidden video transcript...');
+      updateStatus('PROCESSING...', 'Extracting live video transcript...');
       const injection = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        func: async () => {
+        world: 'MAIN',
+        func: () => {
           try {
-            // Fetch raw HTML to bypass YouTube's SPA state
-            const res = await fetch(window.location.href);
-            const htmlText = await res.text();
+            let pr = null;
+            const flexy = document.querySelector('ytd-watch-flexy');
+            if (flexy && flexy.playerData) pr = flexy.playerData;
+            else if (window.ytplayer && window.ytplayer.config && window.ytplayer.config.args && window.ytplayer.config.args.raw_player_response) {
+              pr = JSON.parse(window.ytplayer.config.args.raw_player_response);
+            }
+            else if (window.ytInitialPlayerResponse) pr = window.ytInitialPlayerResponse;
             
-            // Find the hidden caption URL
-            const urlMatch = htmlText.match(/"baseUrl":"(https:[^"]+?timedtext[^"]+)"/);
-            if (!urlMatch) return null;
+            if (!pr) return null;
             
-            // Unescape JSON string artifacts
-            const captionUrl = urlMatch[1].replace(/\\\//g, '/').replace(/\\u0026/g, '&');
+            const tracks = pr.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+            if (!tracks || tracks.length === 0) return null;
             
-            const xmlRes = await fetch(captionUrl);
-            const xmlText = await xmlRes.text();
-            
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-            const textNodes = Array.from(xmlDoc.getElementsByTagName('text'));
-            
-            return textNodes.map(node => {
-              const t = document.createElement("textarea");
-              t.innerHTML = node.textContent;
-              return t.value;
-            }).join(' ').substring(0, 25000);
+            // Find English track or fallback to the first one
+            const englishTrack = tracks.find(t => t.languageCode.includes('en'));
+            return englishTrack ? englishTrack.baseUrl : tracks[0].baseUrl;
           } catch (e) { return null; }
         }
       });
-      pageText = injection[0]?.result;
-      if (!pageText) throw new Error("Could not extract YouTube transcript. Make sure the video has closed captions (CC) available.");
+      
+      const captionUrl = injection[0]?.result;
+      if (!captionUrl) throw new Error("Could not extract YouTube transcript. Make sure the video has closed captions (CC) available.");
+      
+      try {
+        const xmlRes = await fetch(captionUrl);
+        const xmlText = await xmlRes.text();
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+        const textNodes = Array.from(xmlDoc.getElementsByTagName('text'));
+        
+        pageText = textNodes.map(node => {
+          const t = document.createElement("textarea");
+          t.innerHTML = node.textContent;
+          return t.value;
+        }).join(' ').substring(0, 25000);
+      } catch (err) {
+        throw new Error("Failed to fetch caption data from YouTube.");
+      }
+      if (!pageText) throw new Error("Transcript was empty.");
     } else {
       const injection = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
