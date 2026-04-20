@@ -55,10 +55,39 @@ rescanBtn.addEventListener('click', () => {
   scanView.classList.remove('hidden');
   saveVaultBtn.classList.add('hidden');
   rescanBtn.classList.add('hidden');
-  // Switch to HUD tab if needed
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'hud'));
   hudPanel.classList.remove('hidden');
   vaultPanel.classList.add('hidden');
+});
+
+// ═══════════════════════════════════════════
+// EXPLAIN SELECTED TEXT (CONTEXT MENU)
+// ═══════════════════════════════════════════
+chrome.runtime.onMessage.addListener(async (msg) => {
+  if (msg.action === 'EXPLAIN_TEXT') {
+    // Switch to HUD
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'hud'));
+    hudPanel.classList.remove('hidden');
+    vaultPanel.classList.add('hidden');
+    
+    scanView.classList.add('hidden');
+    resultView.classList.remove('hidden');
+    saveVaultBtn.classList.add('hidden');
+    rescanBtn.classList.remove('hidden');
+    
+    updateStatus('EXPLAINING...', 'Skimr is analyzing the selection...');
+    try {
+      const results = await AiService.analyzeText(msg.text + "\n\n(Note: The user highlighted this specific text for explanation.)");
+      const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const defaultNotes = `\n\n--- Highlight Explanation ---\nRetrieved ${dateStr}`;
+      
+      latestScan = { ...results, savedAt: new Date().toISOString(), notes: defaultNotes, rawText: msg.text, url: '' };
+      renderResults(results);
+      saveVaultBtn.classList.remove('hidden');
+    } catch (err) {
+      updateStatus('EXPLANATION FAILED', err.message);
+    }
+  }
 });
 
 // ═══════════════════════════════════════════
@@ -71,24 +100,66 @@ igniteBtn.addEventListener('click', async () => {
     saveVaultBtn.classList.add('hidden');
     updateStatus('INITIALIZING...', 'Preparing capture');
 
-    // Extract Text directly from the active tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) throw new Error('No active tab linked.');
 
-    const injection = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => document.body.innerText.substring(0, 25000) // generous text limit
-    });
+    let pageText = '';
 
-    const pageText = injection[0]?.result;
-    if (!pageText || pageText.trim().length < 50) {
-      throw new Error("Could not detect enough readable text on this page.");
+    if (tab.url.includes('youtube.com/watch')) {
+      updateStatus('PROCESSING...', 'Extracting hidden video transcript...');
+      const injection = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: async () => {
+          try {
+            let playerResponse = window.ytInitialPlayerResponse;
+            if (!playerResponse) {
+              const scripts = Array.from(document.getElementsByTagName('script'));
+              const script = scripts.find(s => s.innerText.includes('ytInitialPlayerResponse'));
+              if (script) {
+                const match = script.innerText.match(/ytInitialPlayerResponse\s*=\s*(\{.*?\});/);
+                if (match) playerResponse = JSON.parse(match[1]);
+              }
+            }
+            if (!playerResponse) return null;
+
+            const captionTracks = playerResponse.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+            if (!captionTracks || captionTracks.length === 0) return null;
+
+            const res = await fetch(captionTracks[0].baseUrl);
+            const xmlText = await res.text();
+            
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+            const textNodes = Array.from(xmlDoc.getElementsByTagName('text'));
+            
+            return textNodes.map(node => {
+              const t = document.createElement("textarea");
+              t.innerHTML = node.textContent;
+              return t.value;
+            }).join(' ').substring(0, 25000);
+          } catch (e) { return null; }
+        }
+      });
+      pageText = injection[0]?.result;
+      if (!pageText) throw new Error("Could not extract YouTube transcript. Make sure the video has captions available.");
+    } else {
+      const injection = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => document.body.innerText.substring(0, 25000)
+      });
+      pageText = injection[0]?.result;
+      if (!pageText || pageText.trim().length < 50) {
+        throw new Error("Could not detect enough readable text on this page.");
+      }
     }
 
     updateStatus('PROCESSING...', 'Skimr AI is extracting insights...');
     const results = await AiService.analyzeText(pageText);
 
-    latestScan = { ...results, savedAt: new Date().toISOString(), notes: '', rawText: pageText };
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const defaultNotes = `\n\n--- Citation ---\n${tab.title || 'Unknown Source'}. Retrieved ${dateStr}, from ${tab.url}`;
+
+    latestScan = { ...results, savedAt: new Date().toISOString(), notes: defaultNotes, rawText: pageText, url: tab.url };
     renderResults(results);
     saveVaultBtn.classList.remove('hidden');
     rescanBtn.classList.remove('hidden'); // Show NEW SCAN button
@@ -164,6 +235,83 @@ saveVaultBtn.addEventListener('click', () => {
       }, 2500);
     });
   });
+});
+
+// ═══════════════════════════════════════════
+// QUIZ MODE LOGIC
+// ═══════════════════════════════════════════
+const quizOverlay = document.getElementById('quiz-overlay');
+const startQuizBtn = document.getElementById('start-quiz-btn');
+const endQuizBtn = document.getElementById('end-quiz-btn');
+const quizCardContainer = document.getElementById('quiz-card-container');
+const quizRevealBtn = document.getElementById('quiz-reveal-btn');
+const quizControls = document.getElementById('quiz-controls');
+const quizScoreControls = document.getElementById('quiz-score-controls');
+const quizRightBtn = document.getElementById('quiz-right-btn');
+const quizWrongBtn = document.getElementById('quiz-wrong-btn');
+
+let quizCards = [];
+let quizIndex = 0;
+let quizScore = 0;
+
+startQuizBtn.addEventListener('click', () => {
+  if (!latestScan || !latestScan.flashcards || latestScan.flashcards.length === 0) return;
+  quizCards = [...latestScan.flashcards]; // copy array
+  quizIndex = 0;
+  quizScore = 0;
+  quizOverlay.classList.remove('hidden');
+  renderQuizCard();
+});
+
+endQuizBtn.addEventListener('click', () => {
+  quizOverlay.classList.add('hidden');
+});
+
+function renderQuizCard() {
+  if (quizIndex >= quizCards.length) {
+    quizCardContainer.innerHTML = `
+      <div style="text-align: center;">
+        <div style="font-size: 3rem; margin-bottom: 10px;">🏆</div>
+        <h2 class="title-vivid" style="font-size: 1.5rem;">Quiz Complete!</h2>
+        <p style="color: var(--text-dim); margin-top: 10px; font-size: 1.1rem;">Score: <span style="color: var(--accent); font-weight: bold;">${quizScore} / ${quizCards.length}</span></p>
+      </div>
+    `;
+    quizControls.classList.add('hidden');
+    quizScoreControls.classList.add('hidden');
+    return;
+  }
+
+  const card = quizCards[quizIndex];
+  quizCardContainer.innerHTML = `
+    <div class="card" style="width: 100%; border-color: var(--accent); box-shadow: 0 0 20px rgba(167, 243, 208, 0.1);">
+      <div class="card-label" style="text-align: center; margin-bottom: 20px;">CARD ${quizIndex + 1} OF ${quizCards.length}</div>
+      <div style="font-size: 1rem; font-weight: 600; text-align: center; margin-bottom: 30px; line-height: 1.4;">${card.q}</div>
+      <div id="quiz-answer-text" class="hidden" style="color: var(--accent); text-align: center; font-size: 0.9rem; border-top: 1px dashed var(--glass-border); padding-top: 20px; line-height: 1.5;">
+        ${card.a}
+      </div>
+    </div>
+  `;
+  
+  quizControls.classList.remove('hidden');
+  quizScoreControls.classList.add('hidden');
+}
+
+quizRevealBtn.addEventListener('click', () => {
+  document.getElementById('quiz-answer-text').classList.remove('hidden');
+  quizControls.classList.add('hidden');
+  quizScoreControls.classList.remove('hidden');
+  quizScoreControls.style.display = 'flex'; // override tailwind-like class if needed
+});
+
+quizRightBtn.addEventListener('click', () => {
+  quizScore++;
+  quizIndex++;
+  renderQuizCard();
+});
+
+quizWrongBtn.addEventListener('click', () => {
+  quizIndex++;
+  renderQuizCard();
 });
 
 // ═══════════════════════════════════════════

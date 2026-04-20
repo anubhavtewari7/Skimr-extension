@@ -43,7 +43,10 @@
             <div id="res-summary"></div>
           </div>
           <div class="card">
-            <div class="card-label">FLASHCARDS <span class="hint">(tap to reveal)</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <div class="card-label" style="margin: 0;">FLASHCARDS <span class="hint">(tap to reveal)</span></div>
+              <button id="start-quiz-btn" class="scan-btn" style="padding: 4px 10px; font-size: 0.65rem; border-radius: 6px;">🎮 QUIZ MODE</button>
+            </div>
             <div id="res-flashcards"></div>
             
             <div class="custom-flashcard-box">
@@ -75,6 +78,23 @@
     <footer class="footer">
       <div id="pulse-orb" class="pulse-orb" title="Focus Mode: hide/show HUD"></div>
     </footer>
+    <!-- QUIZ OVERLAY -->
+    <div id="quiz-overlay" class="hidden" style="position: absolute; inset: 0; background: var(--glass-bg); backdrop-filter: blur(12px); z-index: 100; display: flex; flex-direction: column; padding: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div class="card-label" style="margin: 0; font-size: 0.9rem;">QUIZ MODE</div>
+        <button id="end-quiz-btn" style="background: none; border: none; color: var(--danger); font-weight: bold; cursor: pointer; font-size: 0.8rem;">EXIT</button>
+      </div>
+      <div id="quiz-card-container" style="flex: 1; display: flex; align-items: center; justify-content: center; width: 100%;">
+        <!-- Active Quiz Card -->
+      </div>
+      <div id="quiz-controls" style="display: flex; justify-content: space-around; margin-top: 20px; padding-bottom: 10px;">
+        <button id="quiz-reveal-btn" class="scan-btn" style="width: 100%;">REVEAL ANSWER</button>
+      </div>
+      <div id="quiz-score-controls" class="hidden" style="display: flex; gap: 10px; margin-top: 20px; padding-bottom: 10px;">
+        <button id="quiz-wrong-btn" class="danger-btn" style="flex: 1; padding: 12px; font-weight: bold; border-color: var(--danger);">FORGOT (Swipe Left)</button>
+        <button id="quiz-right-btn" class="scan-btn" style="flex: 1; padding: 12px;">KNEW IT (Swipe Right)</button>
+      </div>
+    </div>
   </div>
 
   <script src="sidepanel.js" type="module"></script>
