@@ -23,23 +23,41 @@ export const AiService = {
   },
 
   async fetchWithRetry(prompt, isJson = true, attempt = 1) {
-    const models = ['openai', 'qwen-coder', 'mistral'];
+    const models = ['mistral', 'llama', 'qwen-coder', 'openai', 'deepseek'];
     const model = models[(attempt - 1) % models.length];
+    const seed = Math.floor(Math.random() * 1000000);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout limit
+    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout
 
     try {
-      const response = await fetch('https://text.pollinations.ai/', {
+      // First attempt: POST request
+      let response = await fetch('https://text.pollinations.ai/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({
           messages: [{ role: 'user', content: prompt }],
           jsonMode: isJson,
-          model: model
+          model: model,
+          seed: seed
         }),
         signal: controller.signal
       });
+
+      // If POST returns 429 (Too Many Requests) or 504, attempt GET request fallback
+      if (response.status === 429 || response.status === 504 || response.status === 500) {
+        console.warn(`POST returned HTTP ${response.status} on model ${model}, trying GET fallback...`);
+        const encodedPrompt = encodeURIComponent(prompt.substring(0, 3000));
+        const getUrl = `https://text.pollinations.ai/${encodedPrompt}?model=${model}&jsonMode=${isJson}&seed=${seed}`;
+        
+        response = await fetch(getUrl, {
+          method: 'GET',
+          signal: controller.signal
+        });
+      }
 
       clearTimeout(timeoutId);
 
@@ -55,18 +73,19 @@ export const AiService = {
       return rawText;
     } catch (err) {
       clearTimeout(timeoutId);
-      if (attempt < 3) {
-        console.warn(`AiService attempt ${attempt} failed (${err.message}), retrying...`);
-        await new Promise(r => setTimeout(r, 1000 * attempt));
+      if (attempt < 5) {
+        const backoffMs = 1200 * attempt;
+        console.warn(`AiService attempt ${attempt} failed (${err.message}). Retrying in ${backoffMs}ms with next model...`);
+        await new Promise(r => setTimeout(r, backoffMs));
         return this.fetchWithRetry(prompt, isJson, attempt + 1);
       }
-      throw err;
+      throw new Error(`AI Service Busy (HTTP 429 / Timeout after 5 retries). Please wait 10 seconds and try again.`);
     }
   },
 
   async analyzeText(pageText) {
-    // Truncate to ~10,000 chars for optimal balance of detail & speed
-    const truncatedText = (pageText || '').substring(0, 10000);
+    // Truncate to ~6,000 chars for maximum reliability and speed
+    const truncatedText = (pageText || '').substring(0, 6000);
 
     const prompt = `You are a highly intelligent academic assistant. I am going to give you the extracted text of a webpage or document. 
 Please analyze it and extract key information.
