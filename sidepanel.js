@@ -61,32 +61,46 @@ rescanBtn.addEventListener('click', () => {
 });
 
 // ═══════════════════════════════════════════
-// EXPLAIN SELECTED TEXT (CONTEXT MENU)
+// EXPLAIN SELECTED TEXT (CONTEXT MENU & STORAGE)
 // ═══════════════════════════════════════════
-chrome.runtime.onMessage.addListener(async (msg) => {
+async function handleExplainText(text) {
+  if (!text) return;
+  // Switch to HUD
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'hud'));
+  hudPanel.classList.remove('hidden');
+  vaultPanel.classList.add('hidden');
+  
+  scanView.classList.add('hidden');
+  resultView.classList.remove('hidden');
+  saveVaultBtn.classList.add('hidden');
+  rescanBtn.classList.remove('hidden');
+  
+  updateStatus('EXPLAINING...', 'Skimr is analyzing the selection...');
+  try {
+    const results = await AiService.analyzeText(text + "\n\n(Note: The user highlighted this specific text for explanation.)");
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const defaultNotes = `\n\n--- Highlight Explanation ---\nRetrieved ${dateStr}`;
+    
+    latestScan = { ...results, savedAt: new Date().toISOString(), notes: defaultNotes, rawText: text, url: '' };
+    renderResults(results);
+    saveVaultBtn.classList.remove('hidden');
+  } catch (err) {
+    updateStatus('EXPLANATION FAILED', err.message);
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg) => {
   if (msg.action === 'EXPLAIN_TEXT') {
-    // Switch to HUD
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'hud'));
-    hudPanel.classList.remove('hidden');
-    vaultPanel.classList.add('hidden');
-    
-    scanView.classList.add('hidden');
-    resultView.classList.remove('hidden');
-    saveVaultBtn.classList.add('hidden');
-    rescanBtn.classList.remove('hidden');
-    
-    updateStatus('EXPLAINING...', 'Skimr is analyzing the selection...');
-    try {
-      const results = await AiService.analyzeText(msg.text + "\n\n(Note: The user highlighted this specific text for explanation.)");
-      const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-      const defaultNotes = `\n\n--- Highlight Explanation ---\nRetrieved ${dateStr}`;
-      
-      latestScan = { ...results, savedAt: new Date().toISOString(), notes: defaultNotes, rawText: msg.text, url: '' };
-      renderResults(results);
-      saveVaultBtn.classList.remove('hidden');
-    } catch (err) {
-      updateStatus('EXPLANATION FAILED', err.message);
-    }
+    handleExplainText(msg.text);
+  }
+});
+
+// Check on load if context menu stored a pending explanation
+chrome.storage.local.get('pendingExplanation', data => {
+  if (data.pendingExplanation) {
+    const text = data.pendingExplanation;
+    chrome.storage.local.remove('pendingExplanation');
+    handleExplainText(text);
   }
 });
 
@@ -101,39 +115,49 @@ igniteBtn.addEventListener('click', async () => {
     updateStatus('INITIALIZING...', 'Preparing capture');
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) throw new Error('No active tab linked.');
+    if (!tab) throw new Error('No active browser tab found.');
+
+    const tabUrl = tab.url || '';
+    const restrictedPrefixes = ['chrome://', 'chrome-extension://', 'edge://', 'about:', 'view-source:', 'https://chromewebstore.google.com'];
+    if (restrictedPrefixes.some(p => tabUrl.startsWith(p))) {
+      throw new Error('Skimr cannot scan Chrome system pages or the Web Store. Please switch to a regular website or article tab.');
+    }
 
     let pageText = '';
 
-    if (tab.url.includes('youtube.com/watch')) {
+    if (tabUrl.includes('youtube.com/watch')) {
       updateStatus('PROCESSING...', 'Extracting live video transcript...');
-      const injection = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        world: 'MAIN',
-        func: () => {
-          try {
-            let pr = null;
-            const flexy = document.querySelector('ytd-watch-flexy');
-            if (flexy && flexy.playerData) pr = flexy.playerData;
-            else if (window.ytplayer && window.ytplayer.config && window.ytplayer.config.args && window.ytplayer.config.args.raw_player_response) {
-              pr = JSON.parse(window.ytplayer.config.args.raw_player_response);
-            }
-            else if (window.ytInitialPlayerResponse) pr = window.ytInitialPlayerResponse;
-            
-            if (!pr) return null;
-            
-            const tracks = pr.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-            if (!tracks || tracks.length === 0) return null;
-            
-            // Find English track or fallback to the first one
-            const englishTrack = tracks.find(t => t.languageCode.includes('en'));
-            return englishTrack ? englishTrack.baseUrl : tracks[0].baseUrl;
-          } catch (e) { return null; }
-        }
-      });
+      let injection;
+      try {
+        injection = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: 'MAIN',
+          func: () => {
+            try {
+              let pr = null;
+              const flexy = document.querySelector('ytd-watch-flexy');
+              if (flexy && flexy.playerData) pr = flexy.playerData;
+              else if (window.ytplayer && window.ytplayer.config && window.ytplayer.config.args && window.ytplayer.config.args.raw_player_response) {
+                pr = JSON.parse(window.ytplayer.config.args.raw_player_response);
+              }
+              else if (window.ytInitialPlayerResponse) pr = window.ytInitialPlayerResponse;
+              
+              if (!pr) return null;
+              
+              const tracks = pr.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+              if (!tracks || tracks.length === 0) return null;
+              
+              const englishTrack = tracks.find(t => t.languageCode.includes('en'));
+              return englishTrack ? englishTrack.baseUrl : tracks[0].baseUrl;
+            } catch (e) { return null; }
+          }
+        });
+      } catch (scriptErr) {
+        throw new Error('Permission denied to read YouTube tab.');
+      }
       
       const captionUrl = injection[0]?.result;
-      if (!captionUrl) throw new Error("Could not extract YouTube transcript. Make sure the video has closed captions (CC) available.");
+      if (!captionUrl) throw new Error("Could not extract YouTube transcript. Make sure closed captions (CC) are enabled for this video.");
       
       try {
         const xmlRes = await fetch(captionUrl);
@@ -146,16 +170,22 @@ igniteBtn.addEventListener('click', async () => {
           const t = document.createElement("textarea");
           t.innerHTML = node.textContent;
           return t.value;
-        }).join(' ').substring(0, 25000);
+        }).join(' ').substring(0, 15000);
       } catch (err) {
         throw new Error("Failed to fetch caption data from YouTube.");
       }
       if (!pageText) throw new Error("Transcript was empty.");
     } else {
-      const injection = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => document.body.innerText.substring(0, 25000)
-      });
+      let injection;
+      try {
+        injection = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => document.body.innerText.substring(0, 15000)
+        });
+      } catch (scriptErr) {
+        throw new Error("Unable to read content from this page. Check tab permissions.");
+      }
+
       pageText = injection[0]?.result;
       if (!pageText || pageText.trim().length < 50) {
         throw new Error("Could not detect enough readable text on this page.");
@@ -166,22 +196,26 @@ igniteBtn.addEventListener('click', async () => {
     const results = await AiService.analyzeText(pageText);
 
     const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    const defaultNotes = `\n\n--- Citation ---\n${tab.title || 'Unknown Source'}. Retrieved ${dateStr}, from ${tab.url}`;
+    const defaultNotes = `\n\n--- Citation ---\n${tab.title || 'Unknown Source'}. Retrieved ${dateStr}, from ${tabUrl}`;
 
-    latestScan = { ...results, savedAt: new Date().toISOString(), notes: defaultNotes, rawText: pageText, url: tab.url };
+    latestScan = { ...results, savedAt: new Date().toISOString(), notes: defaultNotes, rawText: pageText, url: tabUrl };
     renderResults(results);
     saveVaultBtn.classList.remove('hidden');
-    rescanBtn.classList.remove('hidden'); // Show NEW SCAN button
+    rescanBtn.classList.remove('hidden');
 
   } catch (err) {
     updateStatus('LINK FAILURE', err.message);
     saveVaultBtn.classList.add('hidden');
+    rescanBtn.classList.remove('hidden');
     setTimeout(() => {
-      resultView.classList.add('hidden');
-      scanView.classList.remove('hidden');
+      if (latestScan === null) {
+        resultView.classList.add('hidden');
+        scanView.classList.remove('hidden');
+      }
     }, 6000);
   }
 });
+
 
 // ═══════════════════════════════════════════
 // CUSTOM FLASHCARDS
