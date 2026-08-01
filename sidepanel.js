@@ -314,81 +314,216 @@ saveVaultBtn.addEventListener('click', () => {
 });
 
 // ═══════════════════════════════════════════
-// QUIZ MODE LOGIC
+// MULTIPLE-CHOICE QUIZ & STRENGTHS/WEAKNESSES SCORECARD
 // ═══════════════════════════════════════════
-const quizOverlay = document.getElementById('quiz-overlay');
-const startQuizBtn = document.getElementById('start-quiz-btn');
-const endQuizBtn = document.getElementById('end-quiz-btn');
+const quizOverlay       = document.getElementById('quiz-overlay');
+const startQuizBtn     = document.getElementById('start-quiz-btn');
+const endQuizBtn       = document.getElementById('end-quiz-btn');
 const quizCardContainer = document.getElementById('quiz-card-container');
-const quizRevealBtn = document.getElementById('quiz-reveal-btn');
-const quizControls = document.getElementById('quiz-controls');
-const quizScoreControls = document.getElementById('quiz-score-controls');
-const quizRightBtn = document.getElementById('quiz-right-btn');
-const quizWrongBtn = document.getElementById('quiz-wrong-btn');
 
-let quizCards = [];
-let quizIndex = 0;
-let quizScore = 0;
+let mcqQuestions   = [];
+let currentQuizIdx = 0;
+let userScore      = 0;
+let userStrengths  = [];
+let userWeaknesses = [];
+
+// Helper: Fisher-Yates Shuffle
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Generate 4-option MCQs from Flashcards & Summary
+function generateMcqQuestions(flashcards, summaryPoints = []) {
+  if (!flashcards || flashcards.length === 0) return [];
+
+  const genericDistractors = [
+    "It is a secondary variable not directly examined in the study.",
+    "No statistical correlation was established by researchers.",
+    "It represents an alternative control condition.",
+    "The data remains inconclusive according to current findings."
+  ];
+
+  const poolAnswers = flashcards.map(f => f.a);
+
+  return flashcards.map((fc) => {
+    const correctAnswer = fc.a;
+    
+    // Pick 3 distractors from other flashcards or fallback pool
+    let distractorPool = poolAnswers.filter(a => a !== correctAnswer);
+    if (distractorPool.length < 3) {
+      distractorPool = [...distractorPool, ...summaryPoints, ...genericDistractors].filter(a => a !== correctAnswer);
+    }
+    
+    const shuffledDistractors = shuffleArray(distractorPool).slice(0, 3);
+    const options = shuffleArray([correctAnswer, ...shuffledDistractors]);
+    const correctIndex = options.indexOf(correctAnswer);
+
+    return {
+      question: fc.q,
+      options: options,
+      correctIndex: correctIndex,
+      correctAnswer: correctAnswer
+    };
+  });
+}
 
 startQuizBtn.addEventListener('click', () => {
   if (!latestScan || !latestScan.flashcards || latestScan.flashcards.length === 0) return;
-  quizCards = [...latestScan.flashcards]; // copy array
-  quizIndex = 0;
-  quizScore = 0;
+  
+  mcqQuestions   = generateMcqQuestions(latestScan.flashcards, latestScan.summary || []);
+  currentQuizIdx = 0;
+  userScore      = 0;
+  userStrengths  = [];
+  userWeaknesses = [];
+  
   quizOverlay.classList.remove('hidden');
-  renderQuizCard();
+  renderMcqQuestion();
 });
 
 endQuizBtn.addEventListener('click', () => {
   quizOverlay.classList.add('hidden');
 });
 
-function renderQuizCard() {
-  if (quizIndex >= quizCards.length) {
-    quizCardContainer.innerHTML = `
-      <div style="text-align: center;">
-        <div style="font-size: 3rem; margin-bottom: 10px;">🏆</div>
-        <h2 class="title-vivid" style="font-size: 1.5rem;">Quiz Complete!</h2>
-        <p style="color: var(--text-dim); margin-top: 10px; font-size: 1.1rem;">Score: <span style="color: var(--accent); font-weight: bold;">${quizScore} / ${quizCards.length}</span></p>
-      </div>
-    `;
-    quizControls.classList.add('hidden');
-    quizScoreControls.classList.add('hidden');
+function renderMcqQuestion() {
+  if (currentQuizIdx >= mcqQuestions.length) {
+    renderScorecard();
     return;
   }
 
-  const card = quizCards[quizIndex];
+  const item = mcqQuestions[currentQuizIdx];
+  const letters = ['A', 'B', 'C', 'D'];
+
   quizCardContainer.innerHTML = `
-    <div class="card" style="width: 100%; border-color: var(--accent); box-shadow: 0 0 20px rgba(167, 243, 208, 0.1);">
-      <div class="card-label" style="text-align: center; margin-bottom: 20px;">CARD ${quizIndex + 1} OF ${quizCards.length}</div>
-      <div style="font-size: 1rem; font-weight: 600; text-align: center; margin-bottom: 30px; line-height: 1.4;">${card.q}</div>
-      <div id="quiz-answer-text" class="hidden" style="color: var(--accent); text-align: center; font-size: 0.9rem; border-top: 1px dashed var(--glass-border); padding-top: 20px; line-height: 1.5;">
-        ${card.a}
+    <div class="card" style="width: 100%; border-color: var(--glass-border); box-shadow: 0 0 24px rgba(167, 243, 208, 0.08); text-align: left;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <div class="card-label" style="margin: 0; font-size: 0.75rem;">QUESTION ${currentQuizIdx + 1} OF ${mcqQuestions.length}</div>
+        <div style="font-size: 0.75rem; font-weight: 700; color: var(--accent);">${userScore} Correct</div>
+      </div>
+
+      <div style="font-size: 0.95rem; font-weight: 700; margin-bottom: 18px; line-height: 1.45; color: var(--text-vivid);">
+        ${item.question}
+      </div>
+
+      <div class="quiz-options-box">
+        ${item.options.map((opt, i) => `
+          <div class="quiz-option" data-idx="${i}">
+            <div class="quiz-opt-letter">${letters[i]}</div>
+            <div style="flex: 1;">${opt}</div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div id="quiz-next-container" class="hidden" style="margin-top: 16px;">
+        <button id="next-mcq-btn" class="scan-btn" style="width: 100%; font-size: 0.8rem; padding: 12px;">
+          ${currentQuizIdx === mcqQuestions.length - 1 ? 'VIEW SCORECARD 🏆' : 'NEXT QUESTION →'}
+        </button>
       </div>
     </div>
   `;
-  
-  quizControls.classList.remove('hidden');
-  quizScoreControls.classList.add('hidden');
+
+  // Attach option click handlers
+  let answered = false;
+  const optionEls = quizCardContainer.querySelectorAll('.quiz-option');
+
+  optionEls.forEach(optEl => {
+    optEl.addEventListener('click', () => {
+      if (answered) return;
+      answered = true;
+
+      const selectedIdx = parseInt(optEl.dataset.idx);
+
+      // Disable hover on options
+      optionEls.forEach(el => el.classList.add('disabled'));
+
+      if (selectedIdx === item.correctIndex) {
+        optEl.classList.add('correct');
+        userScore++;
+        userStrengths.push({ q: item.question, a: item.correctAnswer });
+      } else {
+        optEl.classList.add('incorrect');
+        // Highlight correct option
+        optionEls[item.correctIndex].classList.add('correct');
+        userWeaknesses.push({ q: item.question, a: item.correctAnswer, chosen: item.options[selectedIdx] });
+      }
+
+      // Show next button
+      document.getElementById('quiz-next-container').classList.remove('hidden');
+    });
+  });
+
+  const nextBtn = document.getElementById('next-mcq-btn');
+  if (nextBtn) {
+    nextBtn.addEventListener('click', () => {
+      currentQuizIdx++;
+      renderMcqQuestion();
+    });
+  }
 }
 
-quizRevealBtn.addEventListener('click', () => {
-  document.getElementById('quiz-answer-text').classList.remove('hidden');
-  quizControls.classList.add('hidden');
-  quizScoreControls.classList.remove('hidden');
-  quizScoreControls.style.display = 'flex'; // override tailwind-like class if needed
-});
+function renderScorecard() {
+  const total = mcqQuestions.length;
+  const percentage = Math.round((userScore / total) * 100);
 
-quizRightBtn.addEventListener('click', () => {
-  quizScore++;
-  quizIndex++;
-  renderQuizCard();
-});
+  quizCardContainer.innerHTML = `
+    <div class="scorecard-container">
+      <div style="text-align: center; margin-bottom: 16px;">
+        <div style="font-size: 2.8rem; margin-bottom: 4px;">🏆</div>
+        <h2 class="title-vivid" style="font-size: 1.3rem;">Quiz Completed</h2>
+        <div class="score-badge">${percentage}%</div>
+        <div style="color: var(--text-dim); font-size: 0.85rem; font-weight: 600;">
+          Score: <span style="color: var(--accent);">${userScore} / ${total} Correct</span>
+        </div>
+      </div>
 
-quizWrongBtn.addEventListener('click', () => {
-  quizIndex++;
-  renderQuizCard();
-});
+      ${userStrengths.length > 0 ? `
+        <div class="section-box">
+          <div class="strength-title">💪 MASTERY STRENGTHS (${userStrengths.length})</div>
+          ${userStrengths.map(s => `
+            <div class="result-item">
+              <div style="color: var(--success); font-weight: 600;">✓ ${s.q}</div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      ${userWeaknesses.length > 0 ? `
+        <div class="section-box">
+          <div class="weakness-title">⚠️ AREAS FOR REVIEW (${userWeaknesses.length})</div>
+          ${userWeaknesses.map(w => `
+            <div class="result-item">
+              <div style="color: var(--danger); font-weight: 600;">✗ ${w.q}</div>
+              <div style="color: var(--accent); margin-top: 4px; font-size: 0.75rem; line-height: 1.4;">
+                <span style="color: var(--text-dim);">Correct Insight:</span> ${w.a}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      <div style="display: flex; gap: 10px; margin-top: 18px; margin-bottom: 10px;">
+        <button id="retry-mcq-btn" class="scan-btn" style="flex: 1; font-size: 0.75rem; padding: 10px;">⟳ RETAKE QUIZ</button>
+        <button id="close-scorecard-btn" class="scan-btn" style="flex: 1; font-size: 0.75rem; padding: 10px; background: var(--glass-mid); color: var(--text-vivid);">DONE</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('retry-mcq-btn').addEventListener('click', () => {
+    currentQuizIdx = 0;
+    userScore      = 0;
+    userStrengths  = [];
+    userWeaknesses = [];
+    renderMcqQuestion();
+  });
+
+  document.getElementById('close-scorecard-btn').addEventListener('click', () => {
+    quizOverlay.classList.add('hidden');
+  });
+}
 
 // ═══════════════════════════════════════════
 // RENDER VAULT NOTEBOOK

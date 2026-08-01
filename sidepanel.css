@@ -509,3 +509,129 @@ body.pulsing .collapsible {
   /* Force page breaks to be clean */
   * { page-break-inside: avoid; }
 }
+
+/* ─── QUIZ MODE STYLES ─── */
+.quiz-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--glass-mid);
+  border: 1px solid var(--glass-border);
+  padding: 12px 14px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-vivid);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.quiz-option:hover:not(.disabled) {
+  background: var(--glass-light);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.quiz-opt-letter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--glass-light);
+  border: 1px solid var(--glass-border);
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.quiz-option.correct {
+  background: hsla(150, 60%, 20%, 0.7) !important;
+  border-color: #34d399 !important;
+  color: #34d399 !important;
+}
+
+.quiz-option.correct .quiz-opt-letter {
+  background: #34d399;
+  color: #000;
+}
+
+.quiz-option.incorrect {
+  background: hsla(350, 60%, 20%, 0.7) !important;
+  border-color: #fb7185 !important;
+  color: #fb7185 !important;
+}
+
+.quiz-option.incorrect .quiz-opt-letter {
+  background: #fb7185;
+  color: #000;
+}
+
+.quiz-option.disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.scorecard-container {
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.score-badge {
+  display: inline-block;
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--accent);
+  margin: 8px 0;
+  text-shadow: 0 0 12px hsla(150, 80%, 70%, 0.4);
+}
+
+.section-box {
+  background: var(--glass-mid);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-top: 14px;
+  text-align: left;
+}
+
+.strength-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--success);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.weakness-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--danger);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.result-item {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--glass-border);
+  line-height: 1.4;
+}
+
+.result-item:last-child {
+  border-bottom: none;
+}
+
