@@ -19,6 +19,7 @@
         <div class="tabs">
           <button class="tab-btn active" data-view="hud">HUD</button>
           <button class="tab-btn" data-view="vault">VAULT</button>
+          <button id="settings-toggle-btn" class="tab-btn" title="AI Settings">⚙</button>
         </div>
       </header>
 
@@ -69,6 +70,19 @@
           <div id="vault-content-col">
             <div id="vault-detail"></div>
           </div>
+        </div>
+      </main>
+
+      <!-- SETTINGS PANEL -->
+      <main id="settings-panel" class="panel hidden">
+        <div class="card">
+          <div class="card-label">SETTINGS & ENGINE</div>
+          <p style="font-size: 0.8rem; color: var(--text-dim); margin-bottom: 12px;">Skimr runs on zero-key free public AI with an automatic offline NLP fallback engine. Optionally add a free Google Gemini API Key for 100% unlimited speed.</p>
+          <div class="custom-flashcard-box" style="flex-direction: column; gap: 8px;">
+            <input type="password" id="gemini-key-input" placeholder="Google Gemini API Key (AIza...)" style="width: 100%; box-sizing: border-box;" />
+            <button id="save-key-btn" class="scan-btn small-btn" style="width: 100%;">Save Key</button>
+          </div>
+          <div id="key-status-msg" style="font-size: 0.75rem; color: var(--accent); margin-top: 8px; text-align: center;"></div>
         </div>
       </main>
 

@@ -9,6 +9,11 @@ const scanView      = document.getElementById('scan-view');
 const resultView    = document.getElementById('result-view');
 const hudPanel      = document.getElementById('hud-panel');
 const vaultPanel    = document.getElementById('vault-panel');
+const settingsPanel = document.getElementById('settings-panel');
+const settingsBtn   = document.getElementById('settings-toggle-btn');
+const geminiKeyInput = document.getElementById('gemini-key-input');
+const saveKeyBtn    = document.getElementById('save-key-btn');
+const keyStatusMsg  = document.getElementById('key-status-msg');
 const saveVaultBtn  = document.getElementById('save-vault-btn');
 const rescanBtn     = document.getElementById('rescan-btn');
 const vaultEmpty    = document.getElementById('vault-empty');
@@ -20,6 +25,22 @@ const customFcBtn   = document.getElementById('custom-fc-btn');
 
 let latestScan = null;     // last scan result
 let activeVaultIndex = 0;  // which vault entry is open
+
+// Load saved key if present
+chrome.storage.local.get('gemini_key', data => {
+  if (data.gemini_key) {
+    geminiKeyInput.value = data.gemini_key;
+    keyStatusMsg.textContent = '✓ Custom Gemini Key Active';
+  }
+});
+
+saveKeyBtn.addEventListener('click', () => {
+  const val = geminiKeyInput.value.trim();
+  chrome.storage.local.set({ gemini_key: val }, () => {
+    keyStatusMsg.textContent = val ? '✓ Custom Key Saved' : 'Cleared. Using Zero-Key Default';
+    setTimeout(() => { keyStatusMsg.textContent = val ? '✓ Custom Gemini Key Active' : ''; }, 2000);
+  });
+});
 
 // ═══════════════════════════════════════════
 // TAB NAVIGATION
@@ -33,13 +54,25 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (view === 'hud') {
       hudPanel.classList.remove('hidden');
       vaultPanel.classList.add('hidden');
-    } else {
+      if (settingsPanel) settingsPanel.classList.add('hidden');
+    } else if (view === 'vault') {
       hudPanel.classList.add('hidden');
       vaultPanel.classList.remove('hidden');
+      if (settingsPanel) settingsPanel.classList.add('hidden');
       renderVault();
     }
   });
 });
+
+if (settingsBtn) {
+  settingsBtn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    settingsBtn.classList.add('active');
+    hudPanel.classList.add('hidden');
+    vaultPanel.classList.add('hidden');
+    settingsPanel.classList.remove('hidden');
+  });
+}
 
 // ═══════════════════════════════════════════
 // PULSE / FOCUS MODE
